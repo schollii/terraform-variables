@@ -1,0 +1,58 @@
+terraform {
+  experiments = [module_variable_optional_attrs]
+}
+
+variable "somevar" {
+   name = string "something"
+}
+
+variable "config2" {
+    buckets = required object {
+      log = object {
+        bucket_name          = string null // has a value so it is optional, else required
+        requester_pays       = string "BucketOwner"
+        acl                  = string "log-delivery-write"
+        bucket_key_enabled   = bool   true
+        encryption_algorithm = string "aws:kms"
+      }
+
+      storage = required map {
+        string = object {
+          bucket_name            = string  // no value so this is required
+          requester_pays         = string "BucketOwner"
+          bucket_key_enabled     = bool   true
+          encryption_algorithm   = string "aws:kms"
+          intelligent_tiering    = object {
+            status      = string "Disabled"
+            prefix      = string null
+            duration    = number 180
+          }
+          but when ../requester_pays == BucketRequester { // "but when" is a "composite keyword"
+            duration    = number 1
+          }
+        }
+        but when requester_pays == "BucketRequester" {
+          bucket_key_enabled     = false
+          encryption_algorithm   = "aws:sse"
+          intelligent_tiering {
+            status      = "Enabled"
+          }
+        }
+      }
+
+      items = list {
+        object {
+          prefix      = string null
+          access_tier = string "DEEP_ARCHIVE_ACCESS"
+          duration    = number 180
+        }
+        but when .../storage.requester_pays != "BucketRequester" {
+          bucket_key_enabled     = false
+          encryption_algorithm   = "aws:sse"
+        }
+        and when ..size > 20 {
+          bucket_key_enabled     = true // error if both whens are true
+        }
+      }
+    }
+}

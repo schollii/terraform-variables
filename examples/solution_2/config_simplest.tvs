@@ -1,0 +1,62 @@
+somevar string { default = "something" }
+
+config object {
+  str1 string { default = "abc" }
+  obj1 object {
+    obj2 object {
+      bucket_name string { default = null }
+      requester_pays string { default = "BucketOwner" }
+      bucket_key_enabled bool { default = true }
+      meta { // this is a block without type so no ambiguity with attribute blocks
+        default = {} // this makes log optional, and the attrib defaults will apply!
+      }
+    }
+
+    map1 map {
+      item_spec string {}
+      // map1 is required because it does not have a default
+    }
+    map3 map {
+      item_spec object {
+        attr1 string { default = null }
+        attr2 object {
+          status string { default = "Disabled" }
+          duration number {}
+          // since there is no default, that attrib must be given
+        }
+      }
+
+      // default = {} // empty map
+      default = {
+        // the item_spec defaults will apply!!
+        key1 = {
+          attr2 = {
+            duration = 123 // these are required
+          }
+        }
+        key2 = {
+          attr2 = {
+            duration = 456
+          }
+        }
+      }
+      // this makes map3 optional, and the attrib defaults will apply!
+    }
+
+    list1 list { item_spec string {} }
+    // list of strings
+    list2 list {
+      item_spec object {
+        attr1 bool {}
+        access_tier string { default = "DEEP_ARCHIVE_ACCESS" }
+        duration number { default = 180 }
+      }
+
+      default = [
+        { attr1 = true },
+        { attr1 = false },
+        { attr1 = true }
+      ]
+    }
+  }
+}

@@ -1,0 +1,108 @@
+terraform {
+  experiments = [module_variable_optional_attrs]
+}
+
+variable "config" {
+  type = object({
+    buckets = object({
+      log = optional(object({
+        bucket_name          = optional(string)
+        requester_pays       = optional(string)
+        acl                  = optional(string)
+        bucket_key_enabled   = optional(bool)
+        encryption_algorithm = optional(string)
+      }))
+
+      inventory = optional(object({
+        bucket_name          = optional(string)
+        requester_pays       = optional(string)
+        acl                  = optional(string)
+        bucket_key_enabled   = optional(bool)
+        encryption_algorithm = optional(string)
+        frequency            = optional(string)
+        format               = optional(string)
+      }))
+
+      storage = map(object({
+        bucket_name            = optional(string)
+        requester_pays         = optional(string)
+        acl_canonical_user_id  = optional(string)
+        bucket_iam_role_name   = optional(string)
+        bucket_key_enabled     = optional(bool)
+        encryption_algorithm   = optional(string)
+        use_bucket_policy_json = optional(bool)
+        intelligent_tiering    = optional(object({
+          status      = optional(string)
+          name        = optional(string)
+          prefix      = optional(string)
+          access_tier = optional(string)
+          duration    = optional(number)
+        }))
+      }))
+
+      items = list(object({
+        _prototype_ = optional(bool)
+        prefix      = optional(string)
+        access_tier = optional(string)
+        duration    = optional(number)
+      }))
+    })
+  })
+
+  default = {
+    buckets = {
+      log = {
+        bucket_name          = null
+        requester_pays       = "BucketOwner"
+        acl                  = "log-delivery-write"
+        bucket_key_enabled   = true
+        encryption_algorithm = "aws:kms"
+      }
+
+      inventory = {
+        bucket_name          = null
+        requester_pays       = "BucketOwner"
+        acl                  = "private"
+        bucket_key_enabled   = true
+        encryption_algorithm = "aws:kms"
+        frequency            = "Daily"
+        format               = "CSV"
+      }
+
+      storage = {
+        _map_value_defaults_ = {
+          bucket_name            = null
+          requester_pays         = "BucketOwner"
+          acl_canonical_user_id  = null
+          bucket_iam_role_name   = null
+          bucket_key_enabled     = true
+          encryption_algorithm   = "aws:kms"
+          use_bucket_policy_json = false
+          intelligent_tiering    = {
+            status      = "Disabled"
+            name        = null
+            prefix      = null
+            access_tier = "DEEP_ARCHIVE_ACCESS"
+            duration    = 180
+          }
+        }
+        # FAIL: not allowed by tf
+        _map_value_defaults_variant_requester_pays = {
+          BucketRequester = {
+            acl_canonical_user_id = "abc"
+            bucket_iam_role_name  = "def"
+          }
+        }
+      }
+
+      items = [
+        {
+          _prototype_ = true
+          prefix      = null
+          access_tier = "DEEP_ARCHIVE_ACCESS"
+          duration    = 180
+        }
+      ]
+    }
+  }
+}

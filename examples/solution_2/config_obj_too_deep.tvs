@@ -1,0 +1,46 @@
+somevar string { default = "something" }
+
+config object {
+  someobj string { default = "abc" }
+
+  attribs {
+    buckets object {
+      attribs {
+        log object {
+          attribs {
+            bucket_name string { default = null }
+            requester_pays string { default = "BucketOwner" }
+            bucket_key_enabled bool { default = true }
+          }
+          default = {} // the attribs defaults will apply!
+        }
+
+        storage map {
+          item_spec object {
+            attribs {
+              bucket_name string { default = null }
+              intelligent_tiering object {
+                attribs {
+                  status string { default = "Disabled" }
+                  duration number { default = 180 }
+                }
+              }
+              // intelligent_tiering
+            }
+          }
+          // map item_spec
+        }
+
+        items list {
+          item_spec object {
+            attribs {
+              prefix string { default = null }
+              access_tier string { default = "DEEP_ARCHIVE_ACCESS" }
+              duration number { default = 180 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

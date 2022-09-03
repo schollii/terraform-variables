@@ -1,0 +1,42 @@
+var1 string { default = "something" }
+
+config object {
+  attr1 string { default = "abc" }
+  attr2 bool { default = false }
+  override {
+    // 0 or more
+    condition = root.var1 == "something"
+    attr1 { default = "abc" }
+    // only default can be overridden ie other like sensitive etc are ERROR]
+  }
+  override {
+    condition = this.attr1 == "abc"
+    attr2 { default = true }
+  }
+
+  attr3 map {
+    item_spec object {
+      attr1 number { default = 123 }
+      attr2 number { default = 0 }
+    }
+    override {
+      condition = item.attr1 > 10
+      attr2 { default = 456 }
+    }
+    override {
+      condition = length(keys(this)) > 10
+      attr2 { default = false }
+    }
+  }
+
+  attr4 list {
+    item_spec object {
+      attr1 number { default = 123 }
+      attr2 number { default = 0 }
+    }
+    override {
+      condition = this.size < 20
+      attr1 { default = "TIER" }
+    }
+  }
+}
