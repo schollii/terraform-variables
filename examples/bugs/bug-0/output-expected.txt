@@ -1,0 +1,6 @@
+config = {
+  "attr1" = 1
+  "attr2" = {
+    "attr3" = 3
+  }
+}

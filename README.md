@@ -1,32 +1,34 @@
 # Overview
 
-A more natural, more concise, more robust, more documentable and more versatile way of handling
-complex input variable structures in terraform!
+Originally: A more natural, more concise, more robust, more documentable and more versatile way of
+handling complex input variable structures in terraform!
+
+Now: TBD because
+of https://discuss.hashicorp.com/t/request-for-feedback-optional-object-type-attributes-with-defaults-in-v1-3-alpha
 
 # Background
 
-I've been using terraform for over 4 years now and I really enjoy it. One thing that its HCL does
-well, is provide a nice uncluttered representation of desired state, both the static aspects as well
-as the DRY aspects that minimize toil and error: repetition in the form of loops (over lists and
-maps), conditionals in the form of the if/then operator and count = 0/1, encapsulation / refactoring
-in the form of modules and locals, subdivision in the form of hierarchical structures, and some
-useful builtin functions for basic processing.
+I've been using terraform for a few years now and I really enjoy it. One thing that its HCL does
+well, is provide a nice uncluttered representation of desired state - both the static aspects as
+well as the DRY aspects that minimize toil and error: repetition in the form of loops (over lists
+and maps), conditionals in the form of the if/then operator and count = 0/1, encapsulation /
+refactoring in the form of modules and locals, subdivision in the form of hierarchical structures,
+and some useful builtin functions for basic processing.
 
 And despite 20+ years as a software engineer and despite my love for Python, Go and (years back) C++
-and C#, I still find HCL way easier to grok than the code equivalent (available in these other
+and C#, I find HCL way easier to grok than the code equivalent (available in these other
 languages via the very impressive pulumi and CDKtf tools). That is, AS LONG AS one stays away from
-complicated data structure transformations.
+complicated data structure transformations. But that's not what this project is about.
 
-BUT one problem that I've been hitting more and more over the years is terraform stack
-configuration: when you have complex systems that have many configuration points, you need an easy
-way to configure and document defaults, so that module users only have to provide the bare necessary
+ONE problem that I've been hitting more and more over the years is terraform stack
+configuration: when you have more than a few infrastructure resources, you need an easy way to
+configure and document defaults, so that module users only have to provide the bare necessary
 overrides, and so that the IDE can provide you with some intellisense. This does not currently exist
-in terraform.
+in terraform. Update 2022-09-04: at least until TF 1.2. In TF 1.3, coming up soon, several issues I
+face have been addressed.
 
-I don't have time to try to convince Hashicorp of what I need, so I'm going to try solving it the
-following way: create a small wrapper program that uses hclwrite to read my own HCL-based schema and
-generates the necessary terraform HCL code to solve all the parametrization issues I face. Details
-below.
+High level solution is to read custom HCL-based schema and generate the necessary terraform HCL
+code to solve all the parametrization issues I face. Details below.
 
 # Status
 
@@ -44,14 +46,16 @@ Terraform currently supports configuration of a root module via the following:
   module's `tf` files;
     - each one specifies variable type, description, default value, sensitivity etc
     - type can be simple like number, bool, string, or complex like list, set, map, object
-    - complex types can use `optional(child_type)` to indicate optional values
-    - tf locals can use `default(variable, defaults)` to substitute defaults into the variable
+    - complex types can use `optional(child_type, default)` to indicate optional values
+    - if an object is null in tfvars then the default object is created instead of being null
+      (which was the behavior till before TF 1.2)
 - these variables can be given a value via `.tfvars` files and command line arguments, which are
-  combined as described in the terraform documentation
+  combined as described in the terraform documentation.
 
 The above functionality is unable to handle several use cases:
 
-1. It is not possible to specify defaults for attributes of objects in maps and lists. Eg given
+1. Before TF 1.3, it was not possible to specify defaults for attributes of objects in maps and
+   lists. Eg given
     ```terraform
     variable "var" {
       type = map(object({
@@ -100,31 +104,14 @@ The above functionality is unable to handle several use cases:
       }
     }
     ```
-   there is no way of getting terraform to fill in what is not given in the tfvars.
+   there is no way of getting terraform to fill in what is not given in the tfvars. In TF 1.3,
+   one can write `main.tf` and `terraform.tfvars` from `example/ex-1`.
 
-2. It is not possible to specify different defaults based on other elements. Given eg
-
-    ```terraform
-    variable "var" {
-      type = object({
-        attrib1 = number
-        attrib2 = string
-      })
-    
-      default = {
-        attrib1 = 123
-        attrib2 = "abc"
-      }
-    }
-    ```
-
-   What if `attrib2` represents the database name, and you would like it to default to `mysql`
-   if `attrib`, the database type, is `mysql`, and to `postgres` if the database type is `postgres`?
-   This cannot be expressed in terraform.
-
-3. It is not possible to deep-merge values using the variable specification's `default` attribute.
-   Eg given the following specification, it should be possible in the tfvars file to specify only
-   var.attrib2.attrib4, and the rest should come from the `default`:
+2. Before TF 1.3, it was not possible to deep-merge values using the variable
+   specification's `default` attribute.
+   Eg given the following specification, it would have been useful in the tfvars file to specify
+   only
+   `var.attrib2.attrib4`, and the rest should come from the `default`:
 
     ```terraform
     variable "var" {
@@ -146,7 +133,29 @@ The above functionality is unable to handle several use cases:
     }
     ```
 
-   However, this does not happen. Instead, attribs 1 and 3 will be null. See `examples/limitation_3`.
+   Instead, attribs 1 and 3 will be null for TF 1.2. Per examples/ex1, TF 1.3 fixes this via a
+   default value that can be specified in `optional()`.
+
+3. It is not possible to specify different defaults based on other elements. Given eg
+
+    ```terraform
+    variable "var" {
+      type = object({
+        attrib1 = number
+        attrib2 = string
+      })
+    
+      default = {
+        attrib1 = 123
+        attrib2 = "abc"
+      }
+    }
+    ```
+
+   What if `attrib2` represents the database name, and you would like it to default to `mysql`
+   if `attrib`, the database type, is `mysql`, and to `postgres` if the database type is `postgres`?
+   This cannot be expressed in the `variable` block; rather, it is necessary to use tf code
+   and the plan must succeed.
 
 4. It is not possible to preview what a value will be when it will be computed from other
    variables. Eg
@@ -160,7 +169,8 @@ The above functionality is unable to handle several use cases:
     ```
 
    Very often, such default value does not depend on data from the cloud provider, and could
-   be computed before the plan and shown "here is what this will be, if you don't set it"
+   be computed before the plan and shown "here is what this will be, if you don't set it".
+   Admittedly, this is a nice to have, not essential like the previous items.
 
 5. Fields cannot be documented, eg there is no way of documenting attribs 1 - 4
 
@@ -176,30 +186,30 @@ The above functionality is unable to handle several use cases:
     }
     ```
 
+   This is still true in TF 1.3,
+   but [this comment](https://discuss.hashicorp.com/t/request-for-feedback-optional-object-type-attributes-with-defaults-in-v1-3-alpha/40550/45)
+   suggests that TF 1.4 might address this issue.
+
 6. Dotted notation is not supported by the terraform CLI `-var` argument.
+
+7. Duplication of variable definitions in sub-modules
+
+The most important are item 3 and item 7.
 
 There are also aspects that likely affect how easy it is to grok the configuration arguments
 and therefore productivity and the likelihood of errors:
 
-- Types and default values should be close together, rather than defined in completely separate
-  blocks; eg it would be nice if HCL could support something like
-
-   ```terraform
-   variable "var" {
-     prototype = map(object({
-       attrib1 = number null  // defaults to null if not specified in tfvars
-       attrib3 = string "abc" // defaults to abc if not specified in tfvars
-       attrib4 = bool         // required because no default value, so every object in map 
-                             // needs at least this attrib 
-     }))
-   }
-   ```
+- Types and default values should be close together. The TF 1.3 `optional()` does this. The
+  TF 1.2 experimental `optional()` does not. In TF 1.3, the default is the second argument
+  to `optional()`.
 
 - Defaults should be visible to the user, it should not be necessary to search for calls
   to `defaults()` in scattered `locals` blocks and read HCL code to figure out what will be the
-  defaults for each variable.
+  defaults for each variable. UPDATE: This has been fixed in TF 1.3: `defaults()` is gone and
+  instead, the ability to have defaults in `optional()` together with proper deep merging of values
+  in tfvars fixes this.
 
-- Whatever solution is chosen to address the above limitations,
+- Whatever solution is chosen here to address the above limitations,
     - the syntax should be HCL v2 and be simple / natural as
       possible so we don't have to learn a new syntax
     - It must support intellisense on the configuration tree used by the stack
@@ -208,25 +218,9 @@ and therefore productivity and the likelihood of errors:
 
 # Solutions Considered
 
-- Modify terraform: not likely feasible but if this were to happen, here is what it might look like
-
-  ```hcl
-  variable "config" {
-    // description of config (so no description attrib required, and tf docs extracts it
-    spec = msp(object({ 
-      attrib1 number 123 {}
-      attrib2 string {} // no value so it is required
-      attrib3 bool true {  //< description for attrib3
-        sensitive=true
-        validation=... // expression that can use any other variables
-        ... 
-      }
-    }))
-  }
-  ```
-
-  and this would be interpreted correctly as a prototype for the objects of the map in `var.config`
-  and fill in all missing data that was not specified in the values obtained from the tfvars.
+- Modify terraform: not likely feasible for item 3 because it is hard to imagine how `optional()`
+  could be extended to fix item 3, since expressions are necessary but not available
+  in `variable.type` elements. It would have to look something like
 
 - JSON/YAML configuraiton files: it is relatively straightforward to create a module that loads json
   or yaml and does (thanks to HCL) all sorts of processing to solve the above issues. The main
@@ -234,9 +228,9 @@ and therefore productivity and the likelihood of errors:
   part of the plan, intellisense is not available on the config tree. Moreover, this
   approach does not solve all of the limitations mentioned.
 
-    - It is also posslble to create a provider. Since the provider would be written in a full fledge
-      OO / imperative language, it could solve all the limitations faced by a module, EXCEPT for
-      intellisense. Support for intellisense is super important.
+  It is also posslble to create a provider. Since the provider would be written in a full fledge
+  OO / imperative language, it could solve all the limitations faced by a module, EXCEPT for
+  intellisense. Support for intellisense is super important.
 
 - Third-party tool: terragrunt, terramate, terraspace, pulumi, cdktf, to name but the main ones, all
   have the potential of removing all these limitations, but to what extent and in what way, would
@@ -251,6 +245,11 @@ and therefore productivity and the likelihood of errors:
   to establish syntax and processing of expressions, but not the behavior of functions or the
   meaning of blocks.
 
+- It would be awesome if defaults could be built from expressions using only other variables. This
+  would allow for defaults based on actuals, eg if two database types are supported but with
+  slightly different defaults, then the actual value of a var could be used
+  in `object({dbname=optional(string, var.dbdefaults[var.dbtype])})`, default
+
 # Solution Chosen
 
 This section describes the latest elements of a solution that addresses all points.
@@ -259,49 +258,18 @@ The overall strategy is to define a new file type where one can specify the inpu
 adhering to HCL syntax; a pre-processor then uses hclwrite or similar to process the file,
 together with tfvars, and to generate a `variables.tf`.
 
-- The generated file is not meant to be
-  edited by humans; any changes there will be lost at the next "rendering" by this
-  pre-processor.
+- The generated file is not meant to be edited by humans; any changes there will be lost at the
+  next "rendering" by this pre-processor.
 - HCL format is quite standard (eg it is easy to reformat HCL in jetbrains IDEs) so it should be
   possible to emit HCL that is at least as readable as your average variables.tf :) Moreover,
   the generated `variables.tf` will be processable by standard tf documentation generation.
-- Due to the odd behavior caused by the combination of the `default` attribute of a `variable` and
-  omission of some attribs in the `.tfvars` (see limitation #3), this `default` attribute cannot be
-  used. Rather, the pre-processor will generate the following:
+- The solution will only support TF 1.3+ due to the very odd experimental behavior of defaults
+  before that version. In fact it may be worth waiting for 1.4 support for nested `variable` blocks,
+  in that case an additional block `override` might be possible to solve item 3.
 
-    - a `variable` block which contains only the type information, sensitivity, etc and an
-      empty `default`
-    - a `variable` block which contains the final set of input values, without any type
-      information, merged from the input specification and the tfvars files
-    - a `local` of the same name that uses the `defaults` function to merge the tfvars (which
-      terraform will have created from the var) and the second `variable` block
+To be updated due to TF 1.3: 
 
-  This strategy will, based on the findings of limitation #3, give all the information
-  that is required for type safety in terraform, for documentation of the module, and for
-  intellisense of the configuration; AND allow the user to further override simple values in .tfvars
-  files (ie they will not be able to remove a map key or list item).
-
-- Due to the nature of inputs tfvars files (which follow various rules regarding auto, json etc)
-  , we may need a new file type for tfvars files so that terraform does not see them. There is
-  no foreseeable reason to change the syntax of this file.
-
-    - To fix limitation #1, there may be some tfvars loading and merging logic that will be
-      necessary to copy from terraform, so that the preprocessor can be called using the same
-      syntax eg instead of `terraform plan -var-file something.tfvars -var something=something`,
-      the command would
-      be `pre-processor-name update-vars -var-file something.tfvars -var something=something`,
-      which would combine the command line args and the local "tfvars" files (auto etc but with)
-      the same way as terraform plan / apply.
-
-- The basic type specification construct is `VAR_NAME TYPE {DETAILS}` where DETAILS is the
-  attributes mentioned in https://www.terraform.io/language/values/variables#arguments except
-  for `type` and `description`, namely `default`, `sensitive`, `validation` and `nullable`. The
-  only attribute that will be processed by this pre-processor is `default`; the type will be
-  obtained from `TYPE` and the description from the comment (this assumes
-  that `hclwrite.parseConfig()` makes comments accessible, but it is not clear yet whether that is
-  correct).
-
-- Simple types: 
+- Simple types:
 
     ```hcl
     my_var1 string {}
@@ -329,7 +297,7 @@ together with tfvars, and to generate a `variables.tf`.
       })
     }
     ```
-  
+
 - Lists:
 
     ```hcl
@@ -347,8 +315,8 @@ together with tfvars, and to generate a `variables.tf`.
       validation { ... }
     }
     ```
-  
-  Also 
+
+  Also
 
   ```hcl
     my_var6 list { // automatically required since not default
@@ -401,4 +369,15 @@ together with tfvars, and to generate a `variables.tf`.
     }
     ```
 
-- The file type for the above terraform variables specification can be `tvs`. 
+- The file type for the above terraform variables specification can be `tvs`.
+
+- It is not clear whether hclwrite and other packages in same repo contain the expression evaluation
+  engine. Eg pre-processor code should be able to give hcl package a set of key value pairs (where
+  key is var name and value is a reference to either a simple or complex object or a function) it
+  will evaluate any expression involving those values (or raise appropriate error)
+
+- import
+
+    ```hcl
+    config_mod_name import { path = "sub_module/config.tvs" }
+    ```

@@ -1,0 +1,15 @@
+config = {
+  "attr1" = 1
+  "attr2" = null /* object */
+}
+
+
+Fixed in https://releases.hashicorp.com/terraform/v1.3.0-alpha20220817/ per:
+https://discuss.hashicorp.com/t/request-for-feedback-optional-object-type-attributes-with-defaults-in-v1-3-alpha/40550/34
+
+config = {
+  "attr1" = 1
+  "attr2" = {
+    "attr1" = 1
+  }
+}
